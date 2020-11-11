@@ -1,0 +1,4 @@
+kubragen>=0.7.24
+kgpr-core>=0.7.4
+kg-efk>=0.7.6
+kg-traefik2>=0.7.5
