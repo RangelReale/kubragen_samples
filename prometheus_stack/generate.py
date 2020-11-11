@@ -110,6 +110,15 @@ def main():
     shell_script.append('set -e')
 
     #
+    # Provider setup
+    #
+    if kgprovider.provider == PROVIDER_K3D:
+        storage_directory = os.path.join(os.getcwd(), 'output', 'storage')
+        if not os.path.exists(storage_directory):
+            os.makedirs(storage_directory)
+        shell_script.append(f'# k3d cluster create kgsample-prometheus-stack --port 5051:80@loadbalancer --port 5052:443@loadbalancer -v {storage_directory}:/var/storage')
+
+    #
     # OUTPUTFILE: namespace.yaml
     #
     file = OutputFile_Kubernetes('namespace.yaml')
@@ -135,6 +144,109 @@ def main():
     shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
 
     #
+    # SETUP: Traefik 2
+    #
+    traefik2_config = Traefik2Builder(kubragen=kg, options=Traefik2Options({
+            'namespace': OptionRoot('namespaces.default'),
+            'config': {
+                'traefik_args': [
+                    '--api.dashboard=true',
+                    '--api.insecure=false',
+                    '--entrypoints.web.Address=:80',
+                    '--entrypoints.api.Address=:8080',
+                    '--entryPoints.metrics.address=:9090',
+                    '--metrics.prometheus=true',
+                    '--metrics.prometheus.entryPoint=metrics',
+                    '--metrics.prometheus.addEntryPointsLabels=true',
+                    '--providers.kubernetescrd',
+                    f'--providers.kubernetescrd.namespaces=default,monitoring'
+                ],
+                'ports': [
+                    Traefik2OptionsPort(name='web', port_container=80, port_service=80),
+                    Traefik2OptionsPort(name='api', port_container=8080, port_service=8080),
+                    Traefik2OptionsPort(name='metrics', port_container=9090, in_service=False),
+                ],
+                'create_traefik_crd': True,
+                'prometheus_port': 9090,
+                'prometheus_annotation': True,
+            },
+        })
+    )
+
+    traefik2_config.ensure_build_names(traefik2_config.BUILD_CRD, traefik2_config.BUILD_ACCESSCONTROL,
+                                       traefik2_config.BUILD_SERVICE)
+
+    #
+    # OUTPUTFILE: traefik-config-crd.yaml
+    #
+    file = OutputFile_Kubernetes('traefik-config-crd.yaml')
+
+    file.append(traefik2_config.build(traefik2_config.BUILD_CRD))
+
+    out.append(file)
+    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
+
+    #
+    # OUTPUTFILE: traefik-config.yaml
+    #
+    file = OutputFile_Kubernetes('traefik-config.yaml')
+
+    file.append(traefik2_config.build(traefik2_config.BUILD_ACCESSCONTROL))
+
+    file.append([{
+        'apiVersion': 'traefik.containo.us/v1alpha1',
+        'kind': 'IngressRoute',
+        'metadata': {
+            'name': 'traefik-api',
+            'namespace': kg.option_get('namespaces.default'),
+        },
+        'spec': {
+            'entryPoints': ['api'],
+            'routes': [{
+                'match': 'Method(`GET`)',
+                'kind': 'Rule',
+                'services': [{
+                    'name': 'api@internal',
+                    'kind': 'TraefikService'
+                }]
+            }]
+        }
+    }])
+
+    out.append(file)
+    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
+
+    #
+    # OUTPUTFILE: traefik.yaml
+    #
+    file = OutputFile_Kubernetes('traefik.yaml')
+
+    file.append(traefik2_config.build(traefik2_config.BUILDITEM_SERVICE))
+
+    file.append({
+        'apiVersion': 'traefik.containo.us/v1alpha1',
+        'kind': 'IngressRoute',
+        'metadata': {
+            'name': 'admin-traefik',
+            'namespace': kg.option_get('namespaces.default'),
+        },
+        'spec': {
+            'entryPoints': ['web'],
+            'routes': [{
+                'match': f'Host(`admin-traefik.localdomain`)',
+                'kind': 'Rule',
+                'services': [{
+                    'name': traefik2_config.object_name('service'),
+                    'port': 8080
+                }],
+            }]
+        }
+    })
+
+    out.append(file)
+    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
+
+    #
     # SETUP: prometheusstack
     #
     pstack_config = PrometheusStackBuilder(kubragen=kg, options=PrometheusStackOptions({
@@ -148,7 +260,8 @@ def main():
                         'enabled': True,
                     }
                 },
-            }), extensions=[PrometheusConfigFileExt_Kubernetes()]),
+            }), extensions=[PrometheusConfigFileExt_Kubernetes(
+                insecure_skip_verify=True, scrape_cadvisor=kgprovider.provider != PROVIDER_K3D)]),
             'grafana_service_port': 80,
             'grafana_provisioning': {
                 'datasources': [{
@@ -193,130 +306,131 @@ def main():
 
     file.append(pstack_config.build(pstack_config.BUILD_SERVICE))
 
-    file.append({
-        'apiVersion': 'traefik.containo.us/v1alpha1',
-        'kind': 'IngressRoute',
-        'metadata': {
-            'name': 'admin-grafana',
-            'namespace': 'monitoring',
-        },
-        'spec': {
-            'entryPoints': ['web'],
-            'routes': [{
-                # 'match': f'Host(`admin-grafana.localdomain`)',
-                'kind': 'Rule',
-                'services': [{
-                    'name': pstack_config.object_name('grafana-service'),
-                    'namespace': 'monitoring',
-                    'port': 80,
-                }],
-            }]
-        }
-    })
-
-    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
-
-    #
-    # SETUP: Traefik 2
-    #
-    traefik2_config = Traefik2Builder(kubragen=kg, options=Traefik2Options({
-            'namespace': OptionRoot('namespaces.default'),
-            'config': {
-                'traefik_args': [
-                    '--api.dashboard=true',
-                    '--api.insecure=false',
-                    '--entrypoints.web.Address=:80',
-                    '--entrypoints.api.Address=:8080',
-                    '--entryPoints.metrics.address=:9090',
-                    '--metrics.prometheus=true',
-                    '--metrics.prometheus.entryPoint=metrics',
-                    '--metrics.prometheus.addEntryPointsLabels=true',
-                    '--providers.kubernetescrd',
-                    f'--providers.kubernetescrd.namespaces=default,monitoring'
-                ],
-                'ports': [
-                    Traefik2OptionsPort(name='web', port_container=80, port_service=80),
-                    Traefik2OptionsPort(name='api', port_container=8080, port_service=8080),
-                    Traefik2OptionsPort(name='metrics', port_container=9090, in_service=False),
-                ],
-                'create_traefik_crd': True,
-                'prometheus_port': 80,
-                'prometheus_annotation': True,
-            },
-        })
-    )
-
-    traefik2_config.ensure_build_names(traefik2_config.BUILD_CRD, traefik2_config.BUILD_ACCESSCONTROL,
-                                       traefik2_config.BUILD_SERVICE)
-
-    #
-    # OUTPUTFILE: traefik-config-crd.yaml
-    #
-    file = OutputFile_Kubernetes('traefik-config-crd.yaml')
-
-    file.append(traefik2_config.build(traefik2_config.BUILD_CRD))
-
-    out.append(file)
-    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
-
-    #
-    # OUTPUTFILE: traefik-config.yaml
-    #
-    file = OutputFile_Kubernetes('traefik-config.yaml')
-
-    file.append(traefik2_config.build(traefik2_config.BUILD_ACCESSCONTROL))
-
     file.append([{
         'apiVersion': 'traefik.containo.us/v1alpha1',
         'kind': 'IngressRoute',
         'metadata': {
-            'name': 'traefik-api',
-            'namespace': 'default',
-        },
-        'spec': {
-            'entryPoints': ['api'],
-            'routes': [{
-                'match': 'Method(`GET`)',
-                'kind': 'Rule',
-                'services': [{
-                    'name': 'api@internal',
-                    'kind': 'TraefikService'
-                }]
-            }]
-        }
-    }])
-
-    out.append(file)
-    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
-
-    #
-    # OUTPUTFILE: traefik.yaml
-    #
-    file = OutputFile_Kubernetes('traefik.yaml')
-
-    file.append(traefik2_config.build(traefik2_config.BUILDITEM_SERVICE))
-
-    file.append({
-        'apiVersion': 'traefik.containo.us/v1alpha1',
-        'kind': 'IngressRoute',
-        'metadata': {
-            'name': 'admin-traefik',
-            'namespace': 'default',
+            'name': 'nirooh-admin-prometheus',
+            'namespace': kg.option_get('namespaces.mon'),
         },
         'spec': {
             'entryPoints': ['web'],
             'routes': [{
-                'match': f'Host(`admin-traefik.localdomain`)',
+                'match': f'Host(`admin-prometheus.localdomain`)',
                 'kind': 'Rule',
                 'services': [{
-                    'name': traefik2_config.object_name('service'),
-                    'port': 8080
+                    'name': pstack_config.object_name('prometheus-service'),
+                    'namespace': pstack_config.namespace(),
+                    'port': pstack_config.option_get('config.prometheus_service_port'),
                 }],
             }]
         }
-    })
+    }, {
+        'apiVersion': 'traefik.containo.us/v1alpha1',
+        'kind': 'IngressRoute',
+        'metadata': {
+            'name': 'admin-grafana',
+            'namespace': kg.option_get('namespaces.mon'),
+        },
+        'spec': {
+            'entryPoints': ['web'],
+            'routes': [{
+                'match': f'Host(`admin-grafana.localdomain`)',
+                'kind': 'Rule',
+                'services': [{
+                    'name': pstack_config.object_name('grafana-service'),
+                    'namespace': pstack_config.namespace(),
+                    'port': pstack_config.option_get('config.grafana_service_port'),
+                }],
+            }]
+        }
+    }])
 
+    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
+
+    #
+    # OUTPUTFILE: http-echo.yaml
+    #
+    file = OutputFile_Kubernetes('http-echo.yaml')
     out.append(file)
+
+    file.append([{
+        'apiVersion': 'apps/v1',
+        'kind': 'Deployment',
+        'metadata': {
+            'name': 'echo-deployment',
+            'namespace': kg.option_get('namespaces.default'),
+            'labels': {
+                'app': 'echo'
+            }
+        },
+        'spec': {
+            'replicas': 1,
+            'selector': {
+                'matchLabels': {
+                    'app': 'echo'
+                }
+            },
+            'template': {
+                'metadata': {
+                    'labels': {
+                        'app': 'echo'
+                    }
+                },
+                'spec': {
+                    'containers': [{
+                        'name': 'echo',
+                        'image': 'mendhak/http-https-echo',
+                        'ports': [{
+                            'containerPort': 80
+                        },
+                        {
+                            'containerPort': 443
+                        }],
+                    }]
+                }
+            }
+        }
+    },
+    {
+        'apiVersion': 'v1',
+        'kind': 'Service',
+        'metadata': {
+            'name': 'echo-service',
+            'namespace': kg.option_get('namespaces.default'),
+        },
+        'spec': {
+            'selector': {
+                'app': 'echo'
+            },
+            'ports': [{
+                'name': 'http',
+                'port': 80,
+                'targetPort': 80,
+                'protocol': 'TCP'
+            }]
+        }
+    }, {
+        'apiVersion': 'traefik.containo.us/v1alpha1',
+        'kind': 'IngressRoute',
+        'metadata': {
+            'name': 'http-echo',
+            'namespace': kg.option_get('namespaces.default'),
+        },
+        'spec': {
+            'entryPoints': ['web'],
+            'routes': [{
+                # 'match': f'Host(`http-echo.localdomain`)',
+                'match': f'PathPrefix(`/`)',
+                'kind': 'Rule',
+                'services': [{
+                    'name': 'echo-service',
+                    'port': 80,
+                }],
+            }]
+        }
+    }])
+
     shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
 
     #
@@ -333,11 +447,10 @@ def main():
             'kind': 'Ingress',
             'metadata': {
                 'name': 'ingress',
-                'namespace': 'default',
+                'namespace': kg.option_get('namespaces.default'),
             },
             'spec': {
                 'rules': [{
-                    # 'host': QuotedStr('*.localdomain'),
                     'http': {
                         'paths': [{
                             'path': http_path,
