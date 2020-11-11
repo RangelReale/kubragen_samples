@@ -310,7 +310,7 @@ def main():
         'apiVersion': 'traefik.containo.us/v1alpha1',
         'kind': 'IngressRoute',
         'metadata': {
-            'name': 'nirooh-admin-prometheus',
+            'name': 'admin-prometheus',
             'namespace': kg.option_get('namespaces.mon'),
         },
         'spec': {
