@@ -115,8 +115,6 @@ def main():
         storage_directory = os.path.join(os.getcwd(), 'output', 'storage')
         if not os.path.exists(storage_directory):
             os.makedirs(storage_directory)
-        if not os.path.exists(os.path.join(storage_directory, 'loki')):
-            os.makedirs(os.path.join(storage_directory, 'loki'))
         shell_script.append(f'# k3d cluster create kgsample-loki-stack --port 5051:80@loadbalancer --port 5052:443@loadbalancer -v {storage_directory}:/var/storage')
 
     #
@@ -151,12 +149,16 @@ def main():
             'namespace': OptionRoot('namespaces.default'),
             'config': {
                 'traefik_args': [
+                    '--api.dashboard=true',
+                    '--api.insecure=false',
                     '--entrypoints.web.Address=:80',
+                    '--entrypoints.api.Address=:8080',
                     '--providers.kubernetescrd',
                     f'--providers.kubernetescrd.namespaces=default,monitoring'
                 ],
                 'ports': [
                     Traefik2OptionsPort(name='web', port_container=80, port_service=80),
+                    Traefik2OptionsPort(name='api', port_container=8080, port_service=8080),
                 ],
                 'create_traefik_crd': True,
             },
