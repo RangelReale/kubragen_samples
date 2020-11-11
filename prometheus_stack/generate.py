@@ -16,7 +16,8 @@ from kubragen import KubraGen
 from kubragen.consts import PROVIDER_K3D, PROVIDER_GOOGLE, PROVIDER_DIGITALOCEAN, PROVIDER_AMAZON
 from kubragen.helper import QuotedStr
 from kubragen.jsonpatch import FilterJSONPatches_Apply, FilterJSONPatch
-from kubragen.kresource import KRPersistentVolumeProfile_HostPath, KRPersistentVolumeClaimProfile_Default
+from kubragen.kresource import KRPersistentVolumeProfile_HostPath, KRPersistentVolumeClaimProfile_Default, \
+    KRPersistentVolumeClaimProfile_Basic
 from kubragen.object import Object
 from kubragen.option import OptionRoot
 from kubragen.options import Options
@@ -62,7 +63,10 @@ def main():
     elif kgprovider.provider == PROVIDER_AMAZON:
         kg.resources().persistentvolumeprofile_add('default', KRPersistentVolumeProfile_AWSElasticBlockStore())
 
-    kg.resources().persistentvolumeclaimprofile_add('default', KRPersistentVolumeClaimProfile_Default())
+    if kgprovider.provider == PROVIDER_K3D:
+        kg.resources().persistentvolumeclaimprofile_add('default', KRPersistentVolumeClaimProfile_Basic(allow_selector=False))
+    else:
+        kg.resources().persistentvolumeclaimprofile_add('default', KRPersistentVolumeClaimProfile_Basic())
 
     kg.resources().persistentvolume_add('prometheus-storage', 'default', {
         'hostPath': {
