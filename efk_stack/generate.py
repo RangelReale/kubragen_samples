@@ -239,11 +239,13 @@ def main():
     shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
 
     #
-    # SETUP: efkstack
+    # SETUP: efk
     #
     efk_config = EFKBuilder(kubragen=kg, options=EFKOptions({
         'namespace': OptionRoot('namespaces.mon'),
         'config': {
+            'elasticsearch_replicas': 1 if kgprovider.provider == PROVIDER_K3D else 3,
+            'probes': False,
             'kibana_service_port': 80,
         },
         'enable': {
