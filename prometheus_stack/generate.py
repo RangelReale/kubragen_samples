@@ -16,8 +16,7 @@ from kubragen import KubraGen
 from kubragen.consts import PROVIDER_K3D, PROVIDER_GOOGLE, PROVIDER_DIGITALOCEAN, PROVIDER_AMAZON
 from kubragen.helper import QuotedStr
 from kubragen.jsonpatch import FilterJSONPatches_Apply, FilterJSONPatch
-from kubragen.kresource import KRPersistentVolumeProfile_HostPath, KRPersistentVolumeClaimProfile_Default, \
-    KRPersistentVolumeClaimProfile_Basic
+from kubragen.kresource import KRPersistentVolumeProfile_HostPath, KRPersistentVolumeClaimProfile_Basic
 from kubragen.object import Object
 from kubragen.option import OptionRoot
 from kubragen.options import Options
