@@ -1,4 +1,4 @@
-kubragen>=0.8.2
+kubragen>=0.8.4
 kgpr-core>=0.8.3
-kg-lokistack>=0.8.0
+kg-lokistack>=0.8.3
 kg-traefik2>=0.8.0

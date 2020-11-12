@@ -244,15 +244,19 @@ def main():
     lokistack_config = LokiStackBuilder(kubragen=kg, options=LokiStackOptions({
         'namespace': OptionRoot('namespaces.mon'),
         'config': {
-            'loki_service_port': 80,
-            'grafana_service_port': 80,
-            'grafana_provisioning': {
-                'datasources': [{
-                    'name': 'Loki',
-                    'type': 'loki',
-                    'access': 'proxy',
-                    'url': 'http://{}:{}'.format('loki', 80),
-                }]
+            'loki': {
+                'service_port': 80,
+            },
+            'grafana': {
+                'service_port': 80,
+                'provisioning': {
+                    'datasources': [{
+                        'name': 'Loki',
+                        'type': 'loki',
+                        'access': 'proxy',
+                        'url': 'http://{}:{}'.format('loki', 80),
+                    }]
+                },
             },
         },
         'enable': {
@@ -307,7 +311,7 @@ def main():
                 'services': [{
                     'name': lokistack_config.object_name('grafana-service'),
                     'namespace': lokistack_config.namespace(),
-                    'port': lokistack_config.option_get('config.grafana_service_port'),
+                    'port': lokistack_config.option_get('config.grafana.service_port'),
                 }],
             }]
         }
