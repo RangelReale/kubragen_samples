@@ -1,4 +1,4 @@
 kubragen>=0.8.4
 kgpr-core>=0.8.3
-kg-prometheusstack>=0.8.2
+kg-prometheusstack>=0.8.3
 kg-traefik2>=0.8.0

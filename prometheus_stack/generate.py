@@ -254,39 +254,43 @@ def main():
         'namespace': OptionRoot('namespaces.mon'),
         'config': {
             'prometheus_annotation': True,
-            'prometheus_service_port': 80,
-            'prometheus_config': PrometheusConfigFile(options=PrometheusConfigFileOptions({
-                'scrape': {
-                    'prometheus': {
-                        'enabled': True,
-                    }
-                },
-            }), extensions=[PrometheusConfigFileExt_Kubernetes(
-                insecure_skip_verify=True, scrape_cadvisor=kgprovider.provider != PROVIDER_K3D)]),
-            'grafana_service_port': 80,
-            'grafana_provisioning': {
-                'datasources': [{
-                    'name': 'Prometheus',
-                    'type': 'prometheus',
-                    'access': 'proxy',
-                    'url': 'http://{}:{}'.format('prometheus', 80),
-                }],
-                'dashboards': [
-                    {
-                        'name': 'default',
-                        'type': 'file',
+            'prometheus': {
+                'service_port': 80,
+                'prometheus_config': PrometheusConfigFile(options=PrometheusConfigFileOptions({
+                    'scrape': {
+                        'prometheus': {
+                            'enabled': True,
+                        }
                     },
-                ],
+                }), extensions=[PrometheusConfigFileExt_Kubernetes(
+                    insecure_skip_verify=True, scrape_cadvisor=kgprovider.provider != PROVIDER_K3D)]),
             },
-            'grafana_dashboards': [
-                GrafanaDashboardSource_GNet(provider='default', name='prometheus', gnetId=2, revision=2,
-                                            datasource='Prometheus'),
-                GrafanaDashboardSource_Url(provider='default', name='kubernetes',
-                                           url='https://raw.githubusercontent.com/zaneclaes/grafana-dashboards/master/kubernetes.json'),
-            ],
-            'grafana_admin': {
-                'user': 'myuser',
-                'password': 'mypassword',
+            'grafana': {
+                'service_port': 80,
+                'provisioning': {
+                    'datasources': [{
+                        'name': 'Prometheus',
+                        'type': 'prometheus',
+                        'access': 'proxy',
+                        'url': 'http://{}:{}'.format('prometheus', 80),
+                    }],
+                    'dashboards': [
+                        {
+                            'name': 'default',
+                            'type': 'file',
+                        },
+                    ],
+                },
+                'dashboards': [
+                    GrafanaDashboardSource_GNet(provider='default', name='prometheus', gnetId=2, revision=2,
+                                                datasource='Prometheus'),
+                    GrafanaDashboardSource_Url(provider='default', name='kubernetes',
+                                               url='https://raw.githubusercontent.com/zaneclaes/grafana-dashboards/master/kubernetes.json'),
+                ],
+                'admin': {
+                    'user': 'myuser',
+                    'password': 'mypassword',
+                },
             },
         },
         'kubernetes': {
@@ -338,7 +342,7 @@ def main():
                 'services': [{
                     'name': pstack_config.object_name('prometheus-service'),
                     'namespace': pstack_config.namespace(),
-                    'port': pstack_config.option_get('config.prometheus_service_port'),
+                    'port': pstack_config.option_get('config.prometheus.service_port'),
                 }],
             }]
         }
@@ -357,7 +361,7 @@ def main():
                 'services': [{
                     'name': pstack_config.object_name('grafana-service'),
                     'namespace': pstack_config.namespace(),
-                    'port': pstack_config.option_get('config.grafana_service_port'),
+                    'port': pstack_config.option_get('config.grafana.service_port'),
                 }],
             }]
         }
