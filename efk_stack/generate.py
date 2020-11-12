@@ -244,9 +244,13 @@ def main():
     efk_config = EFKBuilder(kubragen=kg, options=EFKOptions({
         'namespace': OptionRoot('namespaces.mon'),
         'config': {
-            'elasticsearch_replicas': 1 if kgprovider.provider == PROVIDER_K3D else 3,
             'probes': False,
-            'kibana_service_port': 80,
+            'elasticsearch': {
+                'replicas': 1 if kgprovider.provider == PROVIDER_K3D else 3,
+            },
+            'kibana': {
+                'service_port': 80,
+            },
         },
         'enable': {
             'kibana': True,
@@ -298,7 +302,7 @@ def main():
                 'services': [{
                     'name': efk_config.object_name('kibana-service'),
                     'namespace': efk_config.namespace(),
-                    'port': efk_config.option_get('config.kibana_service_port'),
+                    'port': efk_config.option_get('config.kibana.service_port'),
                 }],
             }]
         }
