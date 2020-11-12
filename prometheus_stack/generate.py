@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 
+from kg_grafana import GrafanaDashboardSource_GNet, GrafanaDashboardSource_Url
 from kg_prometheus import PrometheusConfigFile, PrometheusConfigFileOptions, PrometheusConfigFileExt_Kubernetes
 from kg_prometheusstack import PrometheusStackBuilder, PrometheusStackOptions
 from kg_traefik2 import Traefik2Builder, Traefik2Options, Traefik2OptionsPort
@@ -269,7 +270,23 @@ def main():
                     'type': 'prometheus',
                     'access': 'proxy',
                     'url': 'http://{}:{}'.format('prometheus', 80),
-                }]
+                }],
+                'dashboards': [
+                    {
+                        'name': 'default',
+                        'type': 'file',
+                    },
+                ],
+            },
+            'grafana_dashboards': [
+                GrafanaDashboardSource_GNet(provider='default', name='prometheus', gnetId=2, revision=2,
+                                            datasource='Prometheus'),
+                GrafanaDashboardSource_Url(provider='default', name='kubernetes',
+                                           url='https://raw.githubusercontent.com/zaneclaes/grafana-dashboards/master/kubernetes.json'),
+            ],
+            'grafana_admin': {
+                'user': 'myuser',
+                'password': 'mypassword',
             },
         },
         'kubernetes': {
